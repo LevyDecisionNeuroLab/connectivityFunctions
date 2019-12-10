@@ -28,7 +28,7 @@ def timeSeries(func_files, confound_files, atlas_filename):
     from nilearn.input_data import NiftiLabelsMasker
     # define masker here
     masker = NiftiLabelsMasker(labels_img=atlas_filename, standardize=True, smoothing_fwhm = 6,
-                        memory="/media/Data/nilearn",t_r=1, verbose=5, high_pass=.01 , low_pass = .1) # As it is task based we dont' bandpassing high_pass=.01 , low_pass = .1)
+                        memory="nilearn_cashe",t_r=1, verbose=5, high_pass=.01 , low_pass = .1) # As it is task based we dont' bandpassing high_pass=.01 , low_pass = .1)
     total_subjects = [] # creating an empty array that will hold all subjects matrix 
     # This function needs a masker object that will be defined outside the function
     for func_file, confound_file in zip(func_files, confound_files):
@@ -47,7 +47,7 @@ def timeSeriesSingle(func_file, confound_file, atlas_filename):
     from nilearn.input_data import NiftiLabelsMasker
     # define masker here
     masker = NiftiLabelsMasker(labels_img=atlas_filename, standardize=True, smoothing_fwhm = 6,
-                        memory="/media/Data/nilearn",t_r=1, verbose=5, high_pass=.01 , low_pass = .1) # As it is task based we dont' bandpassing high_pass=.01 , low_pass = .1)
+                        memory="nilearn_cashe",t_r=1, verbose=5, high_pass=.01 , low_pass = .1) # As it is task based we dont' bandpassing high_pass=.01 , low_pass = .1)
     # This function needs a masker object that will be defined outside the function
     confoundClean = removeVars(confound_file)
     confoundArray = confoundClean#confoundClean.values
@@ -73,8 +73,65 @@ def createCorMat(time_series):
         fullMatrix.append(correlation_matrix)
     return fullMatrix
 
-
+##############################################################################
 ## Seed based functions
+    
+def createSeedVoxelSeries(coords, func_filename, confound_filename, mask_file, subject):
+    from nilearn import input_data
+    seed_masker = input_data.NiftiSpheresMasker(
+        coords, radius=6,
+        detrend=True, standardize=True,
+        low_pass=0.1, high_pass=0.01, t_r=1.,
+        memory="/media/Data/nilearn", memory_level=1, verbose=2)
+    
+    brain_masker = input_data.NiftiMasker(mask_img = mask_file,
+        smoothing_fwhm=6,
+        detrend=True, standardize=True,
+        low_pass=0.1, high_pass=0.01, t_r=1.,
+        memory='/media/Data/nilearn', memory_level=1, verbose=2)
+
+    seed_time_series = seed_masker.fit_transform(func_filename,
+                                                 confounds=removeVars(confound_filename))
+    
+    brain_time_series = brain_masker.fit_transform(func_filename,
+                                                   confounds=removeVars(confound_filename))
+    
+    
+    return seed_time_series, brain_time_series, brain_masker
+    
+
+# stratify to events
+def seedVoxelCor(spec_seed_timeseries, spec_brain_timeseries, scriptName, subject, brain_masker, session, seedName):    
+    import numpy as np
+    
+    seed_to_voxel_correlations = (np.dot(spec_brain_timeseries.T, spec_seed_timeseries) /
+                                  spec_seed_timeseries.shape[0]
+                                  )
+
+    
+    from nilearn import plotting
+    
+    seed_to_voxel_correlations_img = brain_masker.inverse_transform(
+        seed_to_voxel_correlations.T)
+
+
+    seed_to_voxel_correlations_fisher_z = np.arctanh(seed_to_voxel_correlations)
+    print("Seed-to-voxel correlation Fisher-z transformed: min = %.3f; max = %.3f"
+          % (seed_to_voxel_correlations_fisher_z.min(),
+             seed_to_voxel_correlations_fisher_z.max()
+             )
+          )
+
+    # Finally, we can tranform the correlation array back to a Nifti image
+    # object, that we can save.
+    seed_to_voxel_correlations_fisher_z_img = brain_masker.inverse_transform(
+        seed_to_voxel_correlations_fisher_z.T)
+    seed_to_voxel_correlations_fisher_z_img.to_filename(
+        '%s_seed_%s_sub-%s_ses-%s_z.nii.gz' %(scriptName,seedName,subject, session))
+    
+    return seed_to_voxel_correlations, seed_to_voxel_correlations_fisher_z
+# this function returns the regular correlation matrix, the fishr-z transformation of correlation matrix and the brain masker (for inverse transform the brain back to nifti image)
+    
 def createDelta(func_files1, func_files2, mask_img):
     from nilearn.input_data import NiftiMasker
     
@@ -91,7 +148,7 @@ def createDelta(func_files1, func_files2, mask_img):
             smoothing_fwhm=6,
             detrend=True, standardize=True,
             t_r=1.,
-            memory='/media/Data/nilearn', memory_level=1, verbose=2)
+            memory='nilearn_cashe', memory_level=1, verbose=2)
     brainMasker.fit(func_files1)
 
     ####
@@ -111,13 +168,13 @@ def createZimg(deltaCor, scriptName, seedName):
             smoothing_fwhm=6,
             detrend=True, standardize=True,
             t_r=1.,
-            memory='/media/Data/nilearn', memory_level=1, verbose=2)
+            memory='nilearn_cashe', memory_level=1, verbose=2)
     # mean across subjects
     mean_zcor_Delta = np.mean(deltaCor,0)
     mean_zcor_img_delta = brainMasker.inverse_transform(mean_zcor_Delta.T)
     # save it as file
     mean_zcor_img_delta.to_filename(
-        '/home/or/kpe_conn/%s_seed_%s_delta_z.nii.gz' %(scriptName,seedName))
+        '%s_seed_%s_delta_z.nii.gz' %(scriptName,seedName))
     
     return mean_zcor_img_delta, mean_zcor_Delta # returns the image and the array 
 

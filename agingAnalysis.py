@@ -36,3 +36,19 @@ plotting.plot_matrix(correlation_matrix)
 
 plotting.plot_connectome(correlation_matrix, coords,
                          title='Correlation Matrix', edge_threshold="95%")
+
+
+## Example of seed based - taking right amygdala coordinations
+from connUtils import createSeedVoxelSeries, seedVoxelCor
+mask_file = '/media/Data/Aging/Preprocessed_data/aging_output/fmriprep/sub-010/ses-1/func/sub-010_ses-1_task-rest_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz'
+coords_amg = [(21,-1,-22)] # right amygdala coordinates
+seed_time_series, brain_time_series, brain_masker = createSeedVoxelSeries(coords_amg, func_file, confound_file, mask_file, '010')
+
+seed_to_voxel_correlations, seed_to_voxel_correlations_fisher_z = seedVoxelCor(seed_time_series, brain_time_series, 'rest', '010', brain_masker, '1', 'RightAmg')
+
+# display the analysis that was done here (one subject only)
+display = plotting.plot_stat_map('/home/or/Documents/genericConnAnalysis/rest_seed_RightAmg_sub-010_ses-1_z.nii.gz', threshold = 0.5)
+display.add_markers(marker_coords=coords_amg, marker_color='g',
+                    marker_size=100)
+
+
